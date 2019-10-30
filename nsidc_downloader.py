@@ -6,7 +6,17 @@
 # to distribute the image data. As a result we will define some needed tools to
 # help automate the data retrieval process and put things into the appropriate
 # place.
+# ---------------------
 
+# ----------------
+# Import Libraries
+# ----------------
+import urllib
+
+
+# -----------------
+# Class Definitions
+# -----------------
 class NSIDCDownloader:
     """
     Defines a class which can be used to download the required GeoTiff or
@@ -20,6 +30,14 @@ class NSIDCDownloader:
     """
 
     def __init__(self, results_folder):
+        """
+        Initializes a new NSIDCDownloader object.
+
+        Parameters:
+        -----------
+            :str results_folder:    string indicating a file path to hold the
+                                    downloaded data
+        """
         self.database_path = 'ftp://sidads.colorado.edu/DATASETS/NOAA/G02135/'
         self.results_folder = results_folder
     
