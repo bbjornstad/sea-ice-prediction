@@ -112,10 +112,10 @@ class NSIDCDownloader:
             :str hemispheres:           one of ['both', 'north', 'south']
                                         indicating which hemispheres should have
                                         their images downloaded (default 'both')
-            :str image_type:            one of ['both', 'extent', 
-                                        'concentration'] indicating whether
-                                        extent and/or concentration images
-                                        should be downloaded (default 'both')
+            :str image_type:            one of ['both', 'extent', 'median'] 
+                                        indicating whether extent and/or median 
+                                        images should be downloaded (default 
+                                        'both')
         """ 
         pass
 
@@ -138,9 +138,9 @@ class NSIDCDownloader:
             :str hemispheres:           one of ['both', 'north', 'south']
                                         indicating which hemispheres should have
                                         their images downloaded
-            :str image_type:            one of ['both', 'extent', 
-                                        'concentration'] indicating whether
-                                        extent and/or concentration images
-                                        should be downloaded (default 'both')
+            :str image_type:            one of ['both', 'extent', 'median'] 
+                                        indicating whether extent and/or median 
+                                        images should be downloaded (default 
+                                        'both')
         """
         pass
