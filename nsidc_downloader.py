@@ -73,8 +73,8 @@ class NSIDCDownloader:
         hemispheres='both',
         image_type='both'):
         """
-        Gets the daily geotiff files from the NSIDC databse for the selected
-        range of years and hemispheres. Saves to the instance's results_folder.
+        Gets the daily GeoTiff files from the NSIDC databse for the selected
+        range of dates and hemispheres. Saves to the instance's results_folder.
 
         Parameters:
         -----------
