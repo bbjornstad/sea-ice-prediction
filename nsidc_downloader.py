@@ -11,7 +11,10 @@
 # ----------------
 # Import Libraries
 # ----------------
-import urllib
+import shutil
+import urllib.request as request
+from contextlib import closing
+from datetime.datetime import now
 
 
 # -----------------
@@ -40,6 +43,24 @@ class NSIDCDownloader:
         """
         self.database_path = 'ftp://sidads.colorado.edu/DATASETS/NOAA/G02135/'
         self.results_folder = results_folder
+
+    def ftp_fetch(self, ftp_sublevel, file_name):
+        """
+        Helper function to fetch a file by name from the given ftp_sublevel 
+        using urllib.
+
+        Parameters:
+        -----------
+            :str ftp_sublevel:      string indicating a path to a sublevel of
+                                    the NSIDC FTP server
+            :str file_name:         string indicating the name of the file to be
+                                    downloaded from the given ftp_server
+        """
+        ftp_file_path = self.database_path + ftp_sublevel + file_name
+        with closing(request.urlopen(ftp_file_path)) as r:
+            save_path = self.results_folder + ftp_sublevel + file_name
+            with open(save_path, 'wb') as f:
+                shutil.copyfileobj(r, f)
     
     def fetch_monthly_geotiffs(
         self,
@@ -64,8 +85,16 @@ class NSIDCDownloader:
                                         'concentration'] indicating whether
                                         extent and/or concentration images
                                         should be downloaded (default 'both')
-        """ 
-        pass
+        """
+        if date_range == 'all':
+            date_start = 1978
+            date_end = now().year
+        else:
+            date_start = date_range[0]
+            date_end = date_range[1]
+
+        hemispheres = ['north', 'south'] if hemispheres == 'both' else [hemispheres]
+        image_type = ['extent', 'concentration'] if image_type == 'both' else [image_type]
 
     def fetch_daily_geotiffs(
         self,
