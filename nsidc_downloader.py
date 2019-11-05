@@ -134,7 +134,6 @@ class NSIDCDownloader:
         
         return df.sort_values(by=['image_type', 'date'])
 
-
     def geotiff_name_format(self, hemisphere, date, img_type):
         """
         Helper function that formats the geotiff metadata into the appropriate

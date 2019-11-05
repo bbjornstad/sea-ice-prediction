@@ -7,9 +7,9 @@
 # sea ice concentration pixel by pixel.
 # ------------------------------
 
-# --------------
-# Library Import
-# --------------
+# ----------------
+# Import Libraries
+# ----------------
 import pandas as pd
 import numpy as np
 import rasterio
@@ -104,7 +104,7 @@ class NSIDCProcessor:
                                         to its datatype
         """
         index = {
-            i, dtype for i, dtype in zip(rasters.indexes, rasters.dtypes)
+            i: dtype for i, dtype in zip(rasters.indexes, rasters.dtypes)
         }
         return index
 
