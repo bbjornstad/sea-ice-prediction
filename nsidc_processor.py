@@ -16,6 +16,7 @@ import rasterio
 import rasterio.plot as rplt
 import matplotlib.pyplot as plt
 from datetime import datetime, date
+from pickle import load
 
 # -----------------
 # Class Definitions
@@ -64,6 +65,55 @@ class NSIDCProcessor:
 
         self.conc_scale = 2550
         self.ext_scale = 255
+        self.default_extent_cmap = None
+        self.default_concentration_cmap = None
+
+    def load_default_colormaps(self, extent=None, concentration=None):
+        """
+        Loads default raster color mappings from the given paths to pickle
+        dictionaries in the same format as rasterio.
+
+        Parameters:
+        -----------
+            :str extent:                string indicating a pickle path of a
+                                        colormap following the NSIDC extent
+                                        guidelines (default None)
+            :str concentration:         string indicating a pickle path of a
+                                        colormap following the NSIDC
+                                        concentration guidelines (default None)
+        """
+        if extent is not None:
+            self.default_extent_cmap = load(extent)
+        if concentration is not None:
+            self.default_concentration_cmap = load(concentration)
+
+
+    def impute_missing_index_date_info(self, set_this_index=False):
+        """
+        Creates a new index dataframe where new rows have been created for
+        missing dates and where the values are taken from the nearest known
+        values. This allows for the creation of a uniform time series even if
+        the raster data is read from the previous day. Note that this assumes
+        that the image_index is indexed by date already.
+
+        Parameters:
+        -----------
+            :bool set_this_index:       boolean value indicating whether or not
+                                        this instance's image index should be
+                                        set to the new index.
+
+        Returns:
+        --------
+            :df reindex:                reindexed dataframe with imputed values
+        """
+        min_date = min(self.image_index.index)
+        max_date = max(self.image_index.index)
+
+        new_idx = pd.date_range(min_date, max_date)
+        reindex = self.image_index.reindex(new_idx, method='nearest')
+        if set_this_index:
+            self.image_index = reindex
+        return reindex
 
     def get_rasters(self, image_path):
         """
@@ -81,10 +131,6 @@ class NSIDCProcessor:
                                         rasterio
         """
         image_data = rasterio.open(self.image_folder + image_path, 'r')
-        # if image_type == 'extent':
-        #     image_data.write_colormap(1, self.extent_cmap)
-        # elif image_type == 'concentration':
-        #     image_data.write_colormap(1, self.concentration_cmap)
         return image_data
 
     def load_by_date(self, date_str):
@@ -119,25 +165,6 @@ class NSIDCProcessor:
                                         the rasterio image           
         """
         return (raster.width, raster.height)
-
-    def rasters_index(self, rasters):
-        """
-        Gets the index of rasters contained in the rasters data loaded with
-        rasterio.
-
-        Parameters:
-        -----------
-            :rasterio dataset rasters:  rasterio loaded dataset of an image
-
-        Returns:
-        --------
-            :dict(int, dtype) index:    dictionary associating the raster index
-                                        to its datatype
-        """
-        index = {
-            i: dtype for i, dtype in zip(rasters.indexes, rasters.dtypes)
-        }
-        return index
 
     def make_colored_tiff(self, tiff_raster):
         """
@@ -199,9 +226,13 @@ class NSIDCProcessor:
             :gen (width, height) ndarray:   generator object returning the numpy
                                             arrays of the rasters
         """
-        for file_name in self.image_index.file_name:
+        for idx, row in self.image_index.iterrows():
+            file_name = row['file_name']
+            image_type = row['image_type']
+
             rasters = self.get_rasters(file_name)
-            yield rasters
+
+            yield self.scale_to_normal(rasters.read(1), image_type)
 
     def scale_from_normal(self, normed_array, image_type):
         """
@@ -215,3 +246,29 @@ class NSIDCProcessor:
             array = normed_array * self.conc_scale
             return array.astype('uint16')
 
+    def create_raster_from_normal(self, normed_array, image_type):
+        """
+        Creates a rasterio dataset from a normalized image array and the given
+        image type
+        """
+        pass
+
+    def scale_to_normal(self, array, image_type):
+        """
+        Scales the given raster array to a shape between 0 and 1 by specifying
+        the image type.
+
+        Parameters:
+        -----------
+            :np.ndarray array:          raster array to scale
+            :str image_type:            one of 'extent' or 'concentration' to
+                                        specify the appropriate scaling
+
+        Returns:
+        --------
+            :np.ndarray normed_array:   scaled array to fit between 0 and 1
+        """
+        if image_type == 'extent':
+            return array / self.ext_scale
+        elif image_type == 'concentration':
+            return array / self.conc_scale
