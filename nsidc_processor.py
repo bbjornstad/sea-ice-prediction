@@ -21,7 +21,7 @@ from pickle import load
 # -----------------
 # Class Definitions
 # -----------------
-class NSIDCProcessor:
+class GeotiffProcessor:
     """
     This class instantiates an object that can be used to easily manipulate and
     extract the needed data from the GeoTiff files. Requires rasterio, a python
@@ -88,7 +88,7 @@ class NSIDCProcessor:
             self.default_concentration_cmap = load(concentration)
 
 
-    def impute_missing_index_date_info(self, set_this_index=False):
+    def impute_missing_index_dates(self, set_this_index=False):
         """
         Creates a new index dataframe where new rows have been created for
         missing dates and where the values are taken from the nearest known
@@ -115,7 +115,7 @@ class NSIDCProcessor:
             self.image_index = reindex
         return reindex
 
-    def get_rasters(self, image_path):
+    def get_bands(self, image_path):
         """
         Uses rasterio to open the raster file at the specified path and returns
         the object.
@@ -147,24 +147,7 @@ class NSIDCProcessor:
         index_entry = temp_index.loc[date_str]
         file_to_load = index_entry.file_name
         file_image_type = index_entry.image_type
-        return self.get_rasters(file_to_load)
-
-
-    def rasters_dimensions(self, rasters):
-        """
-        Gets the width and height of the specified image raster loaded with
-        rasterio.
-
-        Parameters:
-        -----------
-            :rasterio dataset rasters:  rasterio loaded dataset of an image
-
-        Returns:
-        --------
-            :tuple(int) dimensions:     tuple of integers which is the size of
-                                        the rasterio image           
-        """
-        return (raster.width, raster.height)
+        return self.get_bands(file_to_load)
 
     def make_colored_tiff(self, tiff_raster):
         """
@@ -211,7 +194,7 @@ class NSIDCProcessor:
             hemi = row['hemisphere']
             file_name = row['file_name']
             image_name = f'{hemi}_{image_date}_{image_type}.png'
-            img_band = self.get_rasters(file_name)
+            img_band = self.get_bands(file_name)
             fig = self.make_colored_tiff(img_band)
             fig.savefig(f'{new_image_folder}{image_name}')
 
@@ -230,7 +213,7 @@ class NSIDCProcessor:
             file_name = row['file_name']
             image_type = row['image_type']
 
-            rasters = self.get_rasters(file_name)
+            rasters = self.get_bands(file_name)
 
             yield self.scale_to_normal(rasters.read(1), image_type)
 
