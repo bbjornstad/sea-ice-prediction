@@ -83,9 +83,11 @@ class GeotiffProcessor:
                                         concentration guidelines (default None)
         """
         if extent is not None:
-            self.default_extent_cmap = load(extent)
+            with open(extent, 'rb') as extent_dict:
+                self.default_extent_cmap = load(extent_dict)
         if concentration is not None:
-            self.default_concentration_cmap = load(concentration)
+            with open(concentration, 'rb') as concentration_dict:
+                self.default_concentration_cmap = load(concentration_dict)
 
 
     def impute_missing_index_dates(self, set_this_index=False):
@@ -198,7 +200,7 @@ class GeotiffProcessor:
             fig = self.make_colored_tiff(img_band)
             fig.savefig(f'{new_image_folder}{image_name}')
 
-    def process_images_keras_conv(self):
+    def process_images_keras_conv2d(self):
         """
         Gets the raster for each image in the instance's index from the images
         folder and yields the array. Assumes that the image index is
@@ -209,13 +211,35 @@ class GeotiffProcessor:
             :gen (width, height) ndarray:   generator object returning the numpy
                                             arrays of the rasters
         """
+        band_seq = []
         for idx, row in self.image_index.iterrows():
             file_name = row['file_name']
             image_type = row['image_type']
 
             rasters = self.get_bands(file_name)
+            bands = rasters.read().astype(float)
+            # if image_type == 'concentration':
+            #     bad_vals = bands > 1000
+            #     zero_vals = bands < 150
+            #     bands[bad_vals] = -self.ext_scale
+            #     bands[zero_vals] = 0
+            band_seq.append(self.scale_to_normal(bands, image_type))
+        band_array = np.asarray(band_seq)
+        return band_array
 
-            yield self.scale_to_normal(rasters.read(1), image_type)
+    def process_images_keras_convlstm(self):
+        """
+        Gets the raster for each image in the instance's index from the images
+        folder and yields the array. Assumes that the image index is
+        appropriately sorted by date!
+
+        Returns:
+        --------
+            :gen (width, height) ndarray:   generator object returning the numpy
+                                            arrays of the rasters
+        """
+        band_array = self.process_images_keras_conv2d()
+        return band_array.reshape(1, *band_array.shape)
 
     def scale_from_normal(self, normed_array, image_type):
         """
@@ -234,7 +258,31 @@ class GeotiffProcessor:
         Creates a rasterio dataset from a normalized image array and the given
         image type
         """
-        pass
+        arr = self.scale_from_normal(normed_array, image_type)
+        return arr
+
+    def make_colored_prediction_image(self, norm_pred, image_type):
+        pred = norm_pred
+        pred[np.isnan(pred)] = 1
+        if image_type == 'extent':
+            cmap = self.default_extent_cmap
+        elif image_type == 'concentration':
+            cmap = self.default_concentration_cmap
+
+        image_array = self.scale_from_normal(pred, image_type)
+
+        flatten_band = image_array.reshape(
+            image_array.shape[2], image_array.shape[3])
+
+        rgba_vals = [[cmap[i] for i in row] for row in flatten_band]
+        image_array = np.asarray(rgba_vals)
+        fig = plt.figure()
+        ax = fig.add_subplot()
+        ax.imshow(image_array)
+        ax.axis('off')
+        plt.close()
+        return fig
+
 
     def scale_to_normal(self, array, image_type):
         """
