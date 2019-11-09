@@ -113,6 +113,7 @@ class GeotiffProcessor:
 
         new_idx = pd.date_range(min_date, max_date)
         reindex = self.image_index.reindex(new_idx, method='nearest')
+        reindex.index.name = 'date'
         if set_this_index:
             self.image_index = reindex
         return reindex
@@ -142,7 +143,7 @@ class GeotiffProcessor:
         not contain an index with a date column in datetime format. Also
         requires an image_type column specifying either extent or concentration
         """
-        if self.image_index.index.name is not 'date':
+        if self.image_index.index.name != 'date':
             temp_index = self.image_index.set_index('date')
         else:
             temp_index = self.image_index
@@ -200,7 +201,7 @@ class GeotiffProcessor:
             fig = self.make_colored_tiff(img_band)
             fig.savefig(f'{new_image_folder}{image_name}')
 
-    def process_images_keras_conv2d(self):
+    def process_images_keras_channels_first(self):
         """
         Gets the raster for each image in the instance's index from the images
         folder and yields the array. Assumes that the image index is
@@ -218,11 +219,11 @@ class GeotiffProcessor:
 
             rasters = self.get_bands(file_name)
             bands = rasters.read().astype(float)
-            # if image_type == 'concentration':
-            #     bad_vals = bands > 1000
-            #     zero_vals = bands < 150
-            #     bands[bad_vals] = -self.ext_scale
-            #     bands[zero_vals] = 0
+            if image_type == 'concentration':
+                bad_vals = bands > 1000
+                #zero_vals = bands < 150
+                bands[bad_vals] = -self.ext_scale
+                #bands[zero_vals] = 0
             band_seq.append(self.scale_to_normal(bands, image_type))
         band_array = np.asarray(band_seq)
         return band_array
@@ -238,8 +239,13 @@ class GeotiffProcessor:
             :gen (width, height) ndarray:   generator object returning the numpy
                                             arrays of the rasters
         """
-        band_array = self.process_images_keras_conv2d()
+        band_array = self.process_images_keras_channels_first()
         return band_array.reshape(1, *band_array.shape)
+
+    def process_images_keras_lstm(self):
+        band_array = self.process_images_keras_channels_first()
+        reshaped = band_array.reshape(-1, np.prod(band_array.shape[1:]))
+        return reshaped.reshape(1, *reshaped.shape)
 
     def scale_from_normal(self, normed_array, image_type):
         """
@@ -263,7 +269,6 @@ class GeotiffProcessor:
 
     def make_colored_prediction_image(self, norm_pred, image_type):
         pred = norm_pred
-        pred[np.isnan(pred)] = 1
         if image_type == 'extent':
             cmap = self.default_extent_cmap
         elif image_type == 'concentration':
@@ -272,7 +277,7 @@ class GeotiffProcessor:
         image_array = self.scale_from_normal(pred, image_type)
 
         flatten_band = image_array.reshape(
-            image_array.shape[2], image_array.shape[3])
+            image_array.shape[-2], image_array.shape[-1])
 
         rgba_vals = [[cmap[i] for i in row] for row in flatten_band]
         image_array = np.asarray(rgba_vals)
@@ -280,7 +285,7 @@ class GeotiffProcessor:
         ax = fig.add_subplot()
         ax.imshow(image_array)
         ax.axis('off')
-        plt.close()
+        #plt.close()
         return fig
 
 
