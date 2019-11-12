@@ -24,32 +24,128 @@ import keras.backend as kb
 # Class Definitions
 # -----------------
 class IceModeler:
-    def __init__(self, image_shape=(304, 448), image_index='daily'):
+    """
+    This class instantiates an object which can be used to model the
+    concentration of sea ice from numpy arrays read from GeoTiff rasters of sea
+    ice distributed by the NSIDC in the Sea Ice Index. This is an extension of
+    a Keras sequential model which incorporates Temporal Convolutional Networks
+    as well some spatial convolution, and follows a roughly similar API. It
+    seeks to standardize some image parameters for shaping, as well as provide
+    methods for the addition of various time distributed layers with sensible
+    defaults for this dataset (though it could be used on other time distributed
+    image data as well).
+
+    Attributes:
+    -----------
+        :Keras Sequential:              Keras sequential model which holds all
+                                        the model layers.
+        :tuple(int) image_shape:        image shape in width x height format
+        :int im_rows:                   number of rows in image array (height)
+        :int im_cols:                   number of cols in image array (width)
+        :int im_size:                   size of the image in pixels (width * 
+                                        height)
+        :int conc_scale:                constant 2550, the max value present in
+                                        the concentration raster bands
+        :int ext_scale:                 constant 255, the max value present in
+                                        the extent raster bands
+    """
+    def __init__(self, image_shape=(304, 448)):
+        """
+        Initializes an IceModeler object.
+
+        Parameters:
+        -----------
+            :tuple(int) image_shape:    the shape of the images to be fed into
+                                        the model in width x height format
+        """
         self.seq_model = Sequential()
         self.image_shape = image_shape
         self.im_rows = image_shape[1]
         self.im_cols = image_shape[0]
-        if image_index not in ['daily', 'monthly', 'yearly']:
-            raise Exception('Only daily, monthly, or yearly options allowed.')
-        self.image_index = image_index
-        self.image_size = self.im_rows * self.im_cols
+        self.im_size = self.im_rows * self.im_cols
         #self.conc_scale = 1000
         self.conc_scale = 2550
         self.ext_scale = 255
 
     def reshape_to_tcn(self, frames):
-        reshaped = frames.reshape((*frames.shape[:-3], self.image_size))
+        """
+        Reshapes the given array of frames to a shape that is suitable for TCN
+        input by flattening the individual image arrays
+
+        Parameters:
+        -----------
+            :np.ndarray frames:         numpy array containing frames/image
+                                        arrays to be flattened (assumed to be in
+                                        channels_first format).
+
+        Returns:
+        --------
+            :np.ndarray reshaped:       reshaped array with flattened frames
+        """
+        reshaped = frames.reshape((*frames.shape[:-3], self.im_size))
         return reshaped
 
     def reshape_to_image(self, frames):
-        return frames.reshape((*frames.shape[:-1], self.im_rows, self.im_cols))
+        """
+        Reshapes the given array of frames in flat format to a shape that is 
+        suitable to be interpreted as an image in width x height format
+
+        Parameters:
+        -----------
+            :np.ndarray frames:         numpy array containing flattened images
+                                        to be reshaped into width x height
+                                        format
+
+        Returns:
+        --------
+            :np.ndarray reshaped:       reshaped array with frames in width x
+                                        height format
+        """
+        reshaped = frames.reshape(
+            (*frames.shape[:-1], self.im_rows, self.im_cols))
+        return reshaped
 
     def fill_pole_hole(self, frames):
+        """
+        Fills the portions of the given numpy array of frames (either image or
+        flattened format) which are designated to be for the pole with the value
+        for ice. Only applicable for concentration images.
+
+        Parameters:
+        -----------
+            :np.ndarray frames:         numpy array containing image data to be
+                                        filled
+
+        Returns:
+        --------
+            :np.ndarray frames:         numpy array with pole values replaced
+                                        by ice values.
+        """
         # say its fully ice (it's the pole)
         frames[frames == 2510] = 1000
         return frames
 
     def scale_to_normal(self, frames, image_type):
+        """
+        Scales the given array of raw band values to fit between the values of
+        -1 and 1 by simply dividing by the maximum value dictated by the image
+        type.
+
+        In the case of concentration this function also sets the non-ice values
+        to -1 (to get max separation between these pixels and the sea ice pixels
+        to be regressed on)
+
+        Attributes:
+        -----------
+            :np.ndarray frames:         numpy array of frames to be scaled into
+                                        the range of -1 to 1
+            :str image_type:            one of 'concentration' or 'extent' to
+                                        indicate the appropriate scaling factor.
+
+        Returns:
+        --------
+            :np.ndarray frames:         the scaled frames
+        """
         if image_type == 'concentration':
             frames = self.fill_pole_hole(frames)
             frames[frames > 1000] = -self.conc_scale
@@ -58,6 +154,24 @@ class IceModeler:
             return frames / self.ext_scale
 
     def scale_from_normal(self, frames, image_type):
+        """
+        Scales the given array of normalized band values back to the standard
+        form for the image type by simply multiplying by the appropriate scaling
+        factor.
+
+        In the case of concentration images, because this function is used to
+        scale back from predicted values, certain ranges have been set to
+        appropriate values to facilitate later coloration of images.
+
+        Parameters:
+        -----------
+            :np.ndarray frames:         numpy array of frames to be scaled back
+                                        to the appropriate magnitude for the
+                                        image type
+
+            :str image_type:            one of 'concentration' or 'extent' to
+                                        indicate the appropriate scaling factor
+        """
         if image_type == 'concentration':
             scaled = np.round(frames * self.conc_scale)
             scaled[scaled < -850] = 2540
@@ -76,11 +190,40 @@ class IceModeler:
             padding='causal',
             return_sequences=True,
             activation='tanh'):
+        """
+        This function adds n Temporal Convolutional Networks to the Sequential
+        model with the specified hyperparameters (which will be the same if
+        multiple layers are to be added). If the Sequential model has no layers,
+        this method will appropriately set the input shape of the first layer
+        based on image information stored in the instance's attributes.
+
+        Parameters:
+        -----------
+            :int n:                     the number of layers to add
+            :int nb_filters:            the number of filters for each layer 
+                                        (default 10)
+            :int kernel_size:           the convolutional kernel size for each
+                                        layer (default 2)
+            :int nb_stacks:             the number of residual blocks to use for
+                                        each layer (default 1)
+            :str padding:               one of 'causal' or 'valid' indicating
+                                        the style of padding to use (default 
+                                        'causal') (note that 'valid' padding
+                                        removes validity for prediction of
+                                        future events)
+            :bool return_sequences:     boolean indicating whether to return
+                                        the full sequence or the last state
+                                        (default True)
+            :str or valid activation:   activation function to use for each
+                                        layer -- can be a custom function or
+                                        activation layer or simply a Keras str
+        """
+
         # this is the first TCN layer and we need to do some special input shape
         # handling
         if len(self.seq_model.layers) == 0:
             num_same = n-1
-            input_shape = (None, self.image_size)
+            input_shape = (None, self.im_size)
             self.seq_model.add(TCN(
                 nb_filters=nb_filters,
                 kernel_size=kernel_size,
@@ -111,6 +254,34 @@ class IceModeler:
             padding='same',
             data_format='channels_first',
             activation='tanh'):
+        """
+        This method adds n TimeDistributed 2D Convolutional layers to the
+        Sequential model with the specified hyperparameters (which will be the
+        same if multiple layers are to be added). If the Sequential model has no
+        layers, this method will appropriately set the input shape of the first
+        layer from image information stored in the instance's attributes.
+
+        Parameters:
+        -----------
+            :int n:                         the number of layers to add
+            :int filters:                   the number of 2D filters per layer
+                                            (default 4)
+            :int/tuple(int) kernel_size:    the kernel size to use for
+                                            convolution (default 4)
+            :int/tuple(int) strides:        the stride length to use for
+                                            convolution (default 1)
+            :str padding:                   one of 'same' or 'valid' indicating
+                                            the style of padding to use
+            :str data_format:               one of 'channels_first' or
+                                            'channels_last' indicating whether
+                                            the input shape denotes image
+                                            channels before or after the image
+                                            shape
+            :str or valid activation:       activation function to use for each
+                                            layer -- can be a custom function
+                                            or activation layer or a simple
+                                            Keras string
+        """
         if len(self.seq_model.layers) == 0:
             num_same = n-1
             input_shape = (None, self.im_rows, self.im_cols)
@@ -135,6 +306,18 @@ class IceModeler:
                     activation=activation)))
 
     def add_td_flatten(self, data_format='channels_first'):
+        """
+        Adds a single TimeDistributed image flattening layer to the Sequential
+        model, expanding each frame to a single array. If the Sequential model
+        has no layers, this method will appropriately set the input shape based
+        on image information stored in the instance's attributes.
+
+        Parameters:
+            :str data_format:           one of 'channels_first' or 
+                                        'channels_last' indicating whether the
+                                        input shape denotes image bands before
+                                        or after the image shape
+        """
         if len(self.seq_model.layers) == 0:
             input_shape = (None, self.im_rows, self.im_cols)
             td_flat = TimeDistributed(Flatten(
@@ -145,6 +328,12 @@ class IceModeler:
         self.seq_model.add(td_flat)
 
     def add_td_im_reshape(self):
+        """
+        Adds a TimeDistributed reshaping layer to unflatten flattened image
+        frames to width x height format. This layer cannot be used as the first
+        layer in the model. Image shape information is gathered from the
+        instance's attributes.
+        """
         td_reshape = TimeDistributed(Reshape((-1, self.im_rows, self.im_cols)))
         self.seq_model.add(td_reshape)
 
@@ -159,6 +348,27 @@ class IceModeler:
             strides=strides,
             padding=padding,
             data_format=data_format))
+        """
+        Adds a TimeDistributed 2D average pooling layer with the given
+        hyperparameters. This pools each frame of a time series of image frames.
+        This layer cannot be used as the first layer in the model.
+
+        Parameters:
+        -----------
+            :int/tuple(int) pool_size:      integer or tuple of integers
+                                            indicating the size of the pooling
+                                            window
+            :int/tuple(int) strides:        integer or tuple of integers which
+                                            represents stride length to use
+                                            during pooling
+            :str padding:                   one of 'valid' or 'same' indicating
+                                            the style of padding to use during
+                                            pooling
+            :str data_format:               one of 'channels_first' or
+                                            'channels_last' indicating whether
+                                            the input shape denotes image bands
+                                            before or after image shape
+        """
         self.seq_model.add(td_pool)
 
     def add_n_td_dense(
@@ -166,9 +376,25 @@ class IceModeler:
             n,
             units,
             activation='tanh'):
+        """
+        Adds n TimeDistributed dense layers with the given hyperparameters
+        to the Sequential model. If the Sequential model has no layers, then
+        the input shape of the first layer added is appropriately set using
+        image information stored in the instance's attributes. This applies
+        a Dense layer to each frame individually.
+
+        Parameters:
+        -----------
+            :int n:                         number of layers to add
+            :int units:                     number of units to use for each
+                                            layer
+            :str or valid activation:       activation to use in the layers --
+                                            can be a custom activation function
+                                            or layer or a simple Keras string
+        """
         if len(self.seq_model.layers) == 0:
             num_same = n-1
-            input_shape = (None, self.image_size)
+            input_shape = (None, self.im_size)
             self.seq_model.add(TimeDistributed(Dense(
                 units=units,
                 activation=activation,
@@ -183,6 +409,22 @@ class IceModeler:
 
 
     def make_power_error(self, p):
+        """
+        Method that returns a tensor loss function which is the mean-power-error
+        for a specified power. Used to produce custom loss functions for
+        model compilation.
+
+        Parameters:
+        -----------
+            :float p:                       power to use in computing the mean
+                                            power error
+
+        Returns:
+        --------
+            :func(true, pred) p_err:        function which can evaluate the
+                                            mean-power-error between the true
+                                            and predicted tensors
+        """
         def power_error(true, pred, p):
             diff_pow = kb.abs(true-pred)**p
             mean = kb.mean(diff_pow)
@@ -191,7 +433,23 @@ class IceModeler:
         p_err = lambda true, pred: power_error(true, pred, p)
         return p_err
 
-    def make_hard_tanh(self, alpha=5):
+    def make_hard_tanh(self, alpha):
+        """
+        Method that returns an activation function which is the hyperbolic
+        tangent with inputs scaled so as to produce a sharper contour. Used
+        for creating custom activations with different sensitivities.
+
+        Parameters:
+        -----------
+            :float alpha:                   float which is the scaling factor
+                                            to use for inputs to the tanh
+                                            function
+
+        Returns:
+        --------
+            :func(x) alpha_tanh:            scaled hyperbolic tangent function
+                                            on tensor input x
+        """
         def scaled_tanh(x, alpha):
             tanh = kb.tanh(alpha*x)
             return tanh
@@ -199,9 +457,33 @@ class IceModeler:
         return alpha_tanh
 
     def compile(self, loss, optimizer):
+        """
+        Compiles the Sequential model with the given loss and optimizer.
+
+        Parameters:
+        -----------
+            :str or valid loss:             a loss function, either custom or
+                                            a Keras string
+            :str optimizer:                 an optimizer, not all Keras
+                                            optimizers are suitable for TCN
+        """
         self.seq_model.compile(loss=loss, optimizer=optimizer)
 
     def fit(self, x_train, y_train, epochs, batch_size=1):
+        """
+        Fits the Sequential model to the given training data and labels.
+
+        Parameters:
+        -----------
+            :np.ndarray x_train:            the training dataset
+            :np.ndarray y_train:            the labels/output values for the
+                                            training dataset
+            :int epochs:                    the number of epochs to run for
+                                            fitting
+            :int batch_size:                the number of samples to be fed
+                                            into the model at a time during
+                                            fitting
+        """
         self.seq_model.fit(
             x_train, 
             y_train, 
@@ -209,9 +491,24 @@ class IceModeler:
             batch_size=batch_size)
 
     def predict(self, test_frames):
+        """
+        Predicts the next frames from the given testing frames.
+
+        Parameters:
+        -----------
+            :np.ndarray test_frames:        array of test samples to predict on
+
+        Returns:
+        --------
+            :np.ndarray preds:              array of predicted values
+        """
         preds = self.seq_model.predict(test_frames)
         return preds
 
     def reset_model(self):
+        """
+        Removes all layers from the Sequential model by resetting the attribute
+        to a fresh Sequential model.
+        """
         self.seq_model = Sequential()
 
