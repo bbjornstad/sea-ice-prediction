@@ -201,7 +201,7 @@ class GeotiffProcessor:
             fig = self.make_colored_tiff(img_band)
             fig.savefig(f'{new_image_folder}{image_name}')
 
-    def process_images_keras_channels_first(self):
+    def process_images_channels_first(self):
         """
         Gets the raster for each image in the instance's index from the images
         folder and yields the array. Assumes that the image index is
@@ -215,96 +215,50 @@ class GeotiffProcessor:
         band_seq = []
         for idx, row in self.image_index.iterrows():
             file_name = row['file_name']
-            image_type = row['image_type']
 
             rasters = self.get_bands(file_name)
             bands = rasters.read().astype(float)
-            if image_type == 'concentration':
-                bad_vals = bands > 1000
-                #zero_vals = bands < 150
-                bands[bad_vals] = -self.ext_scale
-                #bands[zero_vals] = 0
-            band_seq.append(self.scale_to_normal(bands, image_type))
+            band_seq.append(bands)
         band_array = np.asarray(band_seq)
         return band_array
 
-    def process_images_keras_convlstm(self):
-        """
-        Gets the raster for each image in the instance's index from the images
-        folder and yields the array. Assumes that the image index is
-        appropriately sorted by date!
+    def process_images_channels_first_yearly_sample(self):
+        yearly_sampling = []
+        for y in self.image_index.index.year.unique():
+            band_seq = []
+            index_subset = self.image_index.loc[self.image_index.index.year == y]
+            if index_subset.shape[0] == 366:
+                # sorry new year's
+                index_subset = index_subset.iloc[:-1]
+            for idx, row in index_subset.iterrows():
+                file_name = row['file_name']
+                rasters = self.get_bands(file_name)
+                bands = rasters.read().astype(float)
+                band_seq.append(bands)
+            band_array = np.asarray(band_seq)
+            yearly_sampling.append(band_array)
+        yearly_array = np.asarray(yearly_sampling)
+        return yearly_array, list(self.image_index.index.year.unique())
 
-        Returns:
-        --------
-            :gen (width, height) ndarray:   generator object returning the numpy
-                                            arrays of the rasters
-        """
-        band_array = self.process_images_keras_channels_first()
-        return band_array.reshape(1, *band_array.shape)
-
-    def process_images_keras_lstm(self):
-        band_array = self.process_images_keras_channels_first()
-        reshaped = band_array.reshape(-1, np.prod(band_array.shape[1:]))
-        return reshaped.reshape(1, *reshaped.shape)
-
-    def scale_from_normal(self, normed_array, image_type):
-        """
-        Scales a normalized array into an appropriately valued array based on
-        which type of image we desire.
-        """
-        if image_type == 'extent':
-            array = normed_array * self.ext_scale
-            return array.astype('uint8')
-        elif image_type == 'concentration':
-            array = normed_array * self.conc_scale
-            return array.astype('uint16')
-
-    def create_raster_from_normal(self, normed_array, image_type):
-        """
-        Creates a rasterio dataset from a normalized image array and the given
-        image type
-        """
-        arr = self.scale_from_normal(normed_array, image_type)
-        return arr
-
-    def make_colored_prediction_image(self, norm_pred, image_type):
-        pred = norm_pred
+    def make_colored_prediction_image(self, pred, image_type):
         if image_type == 'extent':
             cmap = self.default_extent_cmap
+            im_array = pred.astype('uint8')
         elif image_type == 'concentration':
             cmap = self.default_concentration_cmap
+            im_array = pred.astype('uint16')
 
-        image_array = self.scale_from_normal(pred, image_type)
+        print(im_array)
+        print(pred)
 
-        flatten_band = image_array.reshape(
-            image_array.shape[-2], image_array.shape[-1])
-
+        flatten_band = im_array.reshape(
+            im_array.shape[-2], im_array.shape[-1])
+        #flatten_band[flatten_band > 60000] = 0
         rgba_vals = [[cmap[i] for i in row] for row in flatten_band]
-        image_array = np.asarray(rgba_vals)
+        im_array = np.asarray(rgba_vals)
         fig = plt.figure()
         ax = fig.add_subplot()
-        ax.imshow(image_array)
+        ax.imshow(im_array)
         ax.axis('off')
         #plt.close()
         return fig
-
-
-    def scale_to_normal(self, array, image_type):
-        """
-        Scales the given raster array to a shape between 0 and 1 by specifying
-        the image type.
-
-        Parameters:
-        -----------
-            :np.ndarray array:          raster array to scale
-            :str image_type:            one of 'extent' or 'concentration' to
-                                        specify the appropriate scaling
-
-        Returns:
-        --------
-            :np.ndarray normed_array:   scaled array to fit between 0 and 1
-        """
-        if image_type == 'extent':
-            return array / self.ext_scale
-        elif image_type == 'concentration':
-            return array / self.conc_scale
