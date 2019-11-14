@@ -8,7 +8,7 @@
 # place.
 #
 # Dependencies:
-# - Pandas
+# - Pandas (for index generation)
 # ---------------------
 
 # ----------------
