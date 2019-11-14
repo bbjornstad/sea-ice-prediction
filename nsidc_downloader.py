@@ -6,6 +6,9 @@
 # to distribute the image data. As a result we will define some needed tools to
 # help automate the data retrieval process and put things into the appropriate
 # place.
+#
+# Dependencies:
+# - Pandas
 # ---------------------
 
 # ----------------

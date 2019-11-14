@@ -3,10 +3,12 @@
 # ---------------------------
 # This class defines an object which can be used to fit certain keras temporal
 # predictive models with relative ease.
+#
 # Dependencies:
 # - numpy
 # - keras
-# - keras-tcn (download from link or install with pip)
+# - keras-tcn (download from https://github.com/philipperemy/keras-tcn
+#   or install with pip)
 # ---------------------------
 
 # ----------------
@@ -81,6 +83,7 @@ class IceModeler:
         Returns:
         --------
             :np.ndarray reshaped:       reshaped array with flattened frames
+                                        (maintains sampling)
         """
         reshaped = frames.reshape((*frames.shape[:-3], self.im_size))
         return reshaped
@@ -99,7 +102,7 @@ class IceModeler:
         Returns:
         --------
             :np.ndarray reshaped:       reshaped array with frames in width x
-                                        height format
+                                        height format (maintains sampling)
         """
         reshaped = frames.reshape(
             (*frames.shape[:-1], self.im_rows, self.im_cols))
@@ -119,7 +122,7 @@ class IceModeler:
         Returns:
         --------
             :np.ndarray frames:         numpy array with pole values replaced
-                                        by ice values.
+                                        by ice values in the same shape
         """
         # say its fully ice (it's the pole)
         frames[frames == 2510] = 1000
@@ -144,7 +147,7 @@ class IceModeler:
 
         Returns:
         --------
-            :np.ndarray frames:         the scaled frames
+            :np.ndarray frames:         the scaled frames in the same shape
         """
         if image_type == 'concentration':
             frames = self.fill_pole_hole(frames)
@@ -171,6 +174,12 @@ class IceModeler:
 
             :str image_type:            one of 'concentration' or 'extent' to
                                         indicate the appropriate scaling factor
+
+        Returns:
+        --------
+            :np.ndarray scaled:         an array of scaled and appropriately
+                                        filtered images frames of the same shape
+                                        as frames
         """
         if image_type == 'concentration':
             scaled = np.round(frames * self.conc_scale)
@@ -191,7 +200,7 @@ class IceModeler:
             return_sequences=True,
             activation='tanh'):
         """
-        This function adds n Temporal Convolutional Networks to the Sequential
+        This method adds n Temporal Convolutional Networks to the Sequential
         model with the specified hyperparameters (which will be the same if
         multiple layers are to be added). If the Sequential model has no layers,
         this method will appropriately set the input shape of the first layer
@@ -500,7 +509,8 @@ class IceModeler:
 
         Returns:
         --------
-            :np.ndarray preds:              array of predicted values
+            :np.ndarray preds:              array of predicted values of the
+                                            same shape as test_frames
         """
         preds = self.seq_model.predict(test_frames)
         return preds

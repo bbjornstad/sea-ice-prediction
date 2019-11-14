@@ -5,6 +5,12 @@
 # with the NSIDC Geotiff Image Files. In particular, we need to extract the
 # concentration data from the image values, as the image values encode the
 # sea ice concentration pixel by pixel.
+#
+# Dependencies:
+# - Pandas
+# - Numpy
+# - Rasterio (download with conda or pip -- conda preferred)
+# - Matplotlib
 # ------------------------------
 
 # ----------------
@@ -187,6 +193,11 @@ class GeotiffProcessor:
         """
         Generates a colored tiff file in the specified folder for each image in
         the image index.
+
+        Parameters:
+        -----------
+            :str new_image_folder:      a string indicating a path to a folder
+                                        in which to save the images.
         """
         for idx, row in self.image_index.iterrows():
             if self.image_index.index.name == 'date':
@@ -205,12 +216,12 @@ class GeotiffProcessor:
         """
         Gets the raster for each image in the instance's index from the images
         folder and yields the array. Assumes that the image index is
-        appropriately sorted by date!
+        appropriately sorted by date. Does not sample the images in any way.
 
         Returns:
         --------
-            :gen (width, height) ndarray:   generator object returning the numpy
-                                            arrays of the rasters
+            :np.ndarray band_array:     an array of the raster bands in channels
+                                        first format.
         """
         band_seq = []
         for idx, row in self.image_index.iterrows():
@@ -223,12 +234,33 @@ class GeotiffProcessor:
         return band_array
 
     def process_images_channels_first_yearly_sample(self):
+        """
+        Processes all of the images contained in the instance's image_index in a
+        yearly sampled fastion. Note that this method REQUIRES that the
+        image_index has a valid datetime index column. In other words, this
+        method typically necessitates having a unique image type and hemisphere
+        selection.
+
+        This method will divide the raster bands into groups by year (removing
+        the last day, New Year's Eve in the case of a leap year) to create
+        a collection of yearly time series of image data in a channels first
+        fashion.
+
+        Returns:
+        --------
+            :np.ndarray yearly_array:       an array of shape (n_samples,
+                                            n_timesteps, n_channels, image_rows,
+                                            image_columns) with the image data
+                                            processed channels first.
+            :list(int) years:               the associated years for each of the
+                                            samples in yearly_array
+        """
         yearly_sampling = []
         for y in self.image_index.index.year.unique():
             band_seq = []
             index_subset = self.image_index.loc[self.image_index.index.year == y]
             if index_subset.shape[0] == 366:
-                # sorry new year's
+                # sorry new year's eve
                 index_subset = index_subset.iloc[:-1]
             for idx, row in index_subset.iterrows():
                 file_name = row['file_name']
@@ -241,6 +273,24 @@ class GeotiffProcessor:
         return yearly_array, list(self.image_index.index.year.unique())
 
     def make_colored_prediction_image(self, pred, image_type):
+        """
+        Makes a colored prediction image from the given prediction frame and
+        specified image type (which defines the color mapping to use).
+
+        Parameters:
+        -----------
+            :np.ndarray pred:               an array corresponding to a single
+                                            image frame in channels_first width
+                                            x height format.
+            :str image_type:                one of 'extent' or 'concentration'
+                                            to denote the desired color mapping
+                                            to use
+
+        Returns:
+        --------
+            :figure fig:                    a matplotlib figure containing the
+                                            colored image without axes
+        """
         if image_type == 'extent':
             cmap = self.default_extent_cmap
             im_array = pred.astype('uint8')
