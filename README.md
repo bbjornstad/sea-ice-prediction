@@ -53,7 +53,7 @@ Ultimately I decided on a combination of spatial and convolutional network layer
     - Reshape to Image
     - Reshape to Flattened
     - Densely Connected
-Also like the `Sequential` model, the IceModeler class has compilation, fitting, and predicting methods. In addition, the class implements a method to predict the next *n* years based on the given known year by successively bootstrapping predictions.
+- Also like the `Sequential` model, the IceModeler class has compilation, fitting, and predicting methods. In addition, the class implements a method to predict the next *n* years based on the given known year by successively bootstrapping predictions.
 
 ## Links
 - [NSIDC Website](https://nsidc.org)
