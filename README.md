@@ -20,19 +20,33 @@ This project is broken up roughly into the following components:
 
 ## Project Dependecies:
 This project requires the following dependencies:
-- Numpy
-- Pandas (for image indexing)
-- Matplotlib (for image generation, specifically of concentration image files)
-- Rasterio (for image processing and data extraction) -- to be removed in future versions, requires GDAL installation (which can be a pain)
-- Keras and dependencies (for neural network modeling)
-- Keras-tcn (special temporal convolutional network layer) -- download from [Phillipe Remy's GitHub](https://github.com/philipperemy/keras-tcn)
+- `Numpy`
+- `Pandas` (for image indexing)
+- `Matplotlib` (for image generation, specifically of concentration image files)
+- `Rasterio` (for image processing and data extraction) -- to be removed in future versions, requires GDAL installation (which can be a pain)
+- `Keras` and dependencies (for neural network modeling)
+- `Keras-tcn` (special temporal convolutional network layer) -- downloaded from [Phillippe Remy's GitHub](https://github.com/philipperemy/keras-tcn) but also packaged in with this repository or available through `pip`.
 
 In general I used Anaconda to install these libraries. Creating a virtual environment is a good idea specifically because of the Rasterio/GDAL dependencies.
 
 ## Model Overview
-At start, the base model I will attempt to implement will be a simple SARIMAX model. We can definitely assume that this data is seasonal, and so this will be a good starting point for our time series analysis and future predictions. However, I would eventually like to make use of a Recurrent Neural Network to create a time series forecasting that includes the ability to generate boundary and concentration images.
+This project is essentially an attempt at tackling a scenario of the following fashion. First, the data that we are given is a time series of images that describes the development over time of a particular region or thing from the same perspective at regular intervals. In the case of this project that region is a well-defined region around the poles where sea ice forms, but we might imagine another scenario. Perhaps for instance we imagine a hypothetical dataset of images of a time series of agar plates with bacterial cultures. This type of architecture should theoretically be applicable in this case as well (though some adjustments will need to be made to abstract the actual model architecture away from sea ice, even though I tried to keep it as abstract as I could given the circumstances).
+
+Since each image is a collection of pixels--in our case these "pixels" are single values that encode a concentration of sea ice for a given geographical region, but this data could also be greyscale or rgb images, or even just a collection of matrices which form a time-series--then we are afforded a decomposition of the overall time series of images to a series of parallel time-series of those individual pixels. Essentially the aim then is to perform a parallel time-series regression on this collection of pixel time-series to make predictions about their values in the future. In the context of sea ice, this means making predictions about future values of sea-ice concentrations for a given pixel (which corresponds to a geographic region). Reconstructing an image from these values depends on the specific context, but the NSIDC has a well-defined color map for translating between measured concentration values and RGB space (these are saved as pickled Python dictionaries in this project). 
+
+I first intended to avoid a neural network approach and start with some more traditional time-series analysis methods (like SARIMA models) in this parallel regression. However, when you consider the fact that each of the images distributed by the NSIDC is 304x448 pixels, then this amounts to 136,192 parallel SARIMA models. It became clear that this would not be a particularly efficient approach, which was something that was important when considering the vast amount of data that was available.
+
+In addition, the applicability of neural networks to image data is hard to ignore. In particular, spatial convolutional neural networks have been shown to be supremely effective in providing needed layers of abstraction to how a computer processes image data, much like humans. That being said, neural networks have also been shown to be quite effective at time-series analysis and predictive forecasting. In particular, standard methods make use of recurrent neural networks, in which network units feed back into themselves so as to use their current state as a paremeter for the next output. Some, such as LSTM variants (long short-term memory) have been found to be quite effective at storing long-term information for use in predictive analysis. However, given the general size of the parallel regression that is attempted in this project, these inefficient recurrent neural network approaches proved to be ineffective. As such, I was forced to turn to a more novel approach.
+
+## Introducing the Temporal Convolutional Network
+The temporal convolutional network is an alternative to the recurrent neural network approaches. Essentially a temporal convolutional network is a stack of progressively dilated convolutional filters applied to the temporal space with the condition that no future data is considered during the convolution. These styles of neural network layers have garnered a lot of recent attention as they offer significantly more efficiency than recurrent network layers while maintaining or even exceeding the performance of recurrent layers. Ultimately because I was using `Keras`, I had to find a suitable implementation of the temporal convolutional layer for `Keras`. Luckily Phillipe Remy has already written such a layer, and his work can be found [here](https://github.com/philipperemy/keras-tcn). His GitHub has a pretty good overview of what a temporal convolutional network can do. The `tcn` folder contained in this project is a direct download from his GitHub page (because I use Anaconda, installing this with `pip`, which is possible, is not a preferred option). I have provided a nice visual here (which is also directly from Phillipe Remy's GitHub page) which helps to illustrate what is happening in the stacks of "causal" convolutional layers which form the temporal convolutional network that only considers the past vs what happens in a "non-causal" architecture which can consider future events as well. Obviously for real-world work these types of models are not reliable as we don't know future data.
+![Causal Convolutional Network](img/dilated_causal.png)
+![Non-Causal Convolutional Network](img/dilated_non_causal.png)
+By increasing the number of *residual blocks* we achieve the following effect
+![Causal Convolutional Network with Additiional Residual Blocks](img/resid_blocks.jpg)
 
 ## Links
 - [NSIDC Website](https://nsidc.org)
 - [Sea Ice Index](https://nsidc.org/data/G02135/versions/3)
 - [About Sea Ice](https://nsidc.org/cryosphere/seaice/index.html)
+- [Phillipe Remy's Keras-TCN](https://github.com/phillipp)

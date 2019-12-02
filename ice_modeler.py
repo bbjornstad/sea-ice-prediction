@@ -121,12 +121,34 @@ class IceModeler:
 
         Returns:
         --------
-            :np.ndarray frames:         numpy array with pole values replaced
+            :np.ndarray filled:         numpy array with pole values replaced
                                         by ice values in the same shape
         """
         # say its fully ice (it's the pole)
-        frames[frames == 2510] = 1000
-        return frames
+        filled = np.copy(frames)
+        filled[filled == 2510] = 1000
+        return filled
+
+    def process_image_masks(self, im_array):
+        """
+        This method looks at the given array of frames and creates a mask
+        identifying regions in which ice is specified to form and those regions
+        which correspond to land areas or other fixed values.
+
+        Parameters:
+        -----------
+            :np.ndarray im_array:       numpy array containing image data for
+                                        which masks should be generated
+
+        Returns:
+        --------
+            :np.ndarray masks:          numpy array containing 0s where sea ice
+                                        should not be found and 1s where sea ice
+                                        should be found
+        """
+        masks = im_array <= 1000
+        masks = masks.astype(int)
+        return masks
 
     def scale_to_normal(self, frames, image_type):
         """
@@ -147,14 +169,15 @@ class IceModeler:
 
         Returns:
         --------
-            :np.ndarray frames:         the scaled frames in the same shape
+            :np.ndarray normed:         the scaled frames in the same shape
         """
+        normed = np.copy(frames)
         if image_type == 'concentration':
-            frames = self.fill_pole_hole(frames)
-            frames[frames > 1000] = -self.conc_scale
-            return frames / self.conc_scale
+            normed = self.fill_pole_hole(normed)
+            normed[normed > 1000] = -self.conc_scale
+            return normed / self.conc_scale
         elif image_type == 'extent':
-            return frames / self.ext_scale
+            return normed / self.ext_scale
 
     def scale_from_normal(self, frames, image_type):
         """
