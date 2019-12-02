@@ -55,6 +55,26 @@ Ultimately I decided on a combination of spatial and convolutional network layer
     - Densely Connected
 - Also like the `Sequential` model, the IceModeler class has compilation, fitting, and predicting methods. In addition, the class implements a method to predict the next *n* years based on the given known year by successively bootstrapping predictions.
 
+## Some Resultant Images
+First, I started by just testing out some spatial convolutional filtering, which is seen in the following image
+![spatial convolution only](img/spatial_conv.png)
+
+Then, I tested only temporal convolutional filtering, which resulted in the following image
+![temporal convolution only](img/temporal_conv.png)
+
+A combination of the two produces the following style of predicted images
+![combination convolution](img/combo_conv.png)
+
+## To-Do
+Obviously, given the current results, we still have some tuning of hyperparameters to ensure that we have a sufficient model. It seems mostly like the central areas of the North pole have the issue of being identified as land regions in the eventual color mapping. Theoretically this could be due to the neural network architecture and the regions which have been identified as land or able to have sea ice. Hence, the following are important priority items:
+- Find a different method by which we can have the model learn which regions are land or not
+    - One idea is to have the model learn two outputs: one for the sea ice concentrations and another for land vs not land regions
+    - If all land vs not-land region masks are the same, then perhaps we can safely assume this same mask for future predictions? This obviously does not consider long-form geographical changes in land area, but in general the time-scales we are dealing with in this project are short in comparison to geological time-scales.
+- Find a better mapping between the model output space and the associated color mapping. This might be related to the previous quesiton.
+- Attempt for the South Pole.
+- Make prediction video/gif
+
+
 ## Links
 - [NSIDC Website](https://nsidc.org)
 - [Sea Ice Index](https://nsidc.org/data/G02135/versions/3)
