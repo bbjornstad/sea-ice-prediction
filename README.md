@@ -60,3 +60,5 @@ Also like the `Sequential` model, the IceModeler class has compilation, fitting,
 - [Sea Ice Index](https://nsidc.org/data/G02135/versions/3)
 - [About Sea Ice](https://nsidc.org/cryosphere/seaice/index.html)
 - [Phillipe Remy's Keras-TCN](https://github.com/phillipp)
+- [My Blog Post](https://baileybjornstad.squarespace.com/blog/at-the-icy-fringe)
+- [Summary Blog Post](https://baileybjornstad.squarespace.com/blog/sweetened-condensed-ice)
