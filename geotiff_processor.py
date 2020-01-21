@@ -312,3 +312,56 @@ class GeotiffProcessor:
         ax.axis('off')
         #plt.close()
         return fig
+
+    def make_side_by_side_image(self, pred, actual, image_type):
+        """
+        Makes a colored prediction image from the given prediction frame and
+        specified image type (which defines the color mapping to use).
+
+        Parameters:
+        -----------
+            :np.ndarray pred:               an array corresponding to a single
+                                            image frame in channels_first width
+                                            x height format
+            :np.ndarray actual:             an array which is the corresponding
+                                            actual image data
+            :str image_type:                one of 'extent' or 'concentration'
+                                            to denote the desired color mapping
+                                            to use
+
+        Returns:
+        --------
+            :figure fig:                    a matplotlib figure containing the
+                                            colored image without axes
+        """
+        if image_type == 'extent':
+            cmap = self.default_extent_cmap
+            pred_array = pred.astype('uint8')
+            actual_array = actual.astype('uint8')
+        elif image_type == 'concentration':
+            cmap = self.default_concentration_cmap
+            pred_array = pred.astype('uint16')
+            actual_array = actual.astype('uint16')
+
+        #print(im_array)
+        #print(pred)
+
+        flatten_pred_band = pred_array.reshape(
+            pred_array.shape[-2], pred_array.shape[-1])
+        flatten_actual_band = actual_array.reshape(
+            actual_array.shape[-2], actual_array.shape[-1])
+
+        #flatten_band[flatten_band > 60000] = 0
+        pred_rgba_vals = [[cmap[i] for i in row] for row in flatten_pred_band]
+        actual_rgba_vals = [[cmap[i] for i in row] for row in flatten_actual_band]
+        pred_array = np.asarray(pred_rgba_vals)
+        actual_array = np.array(actual_rgba_vals)
+        fig, ax = plt.subplots(1,2)
+        ax[0].imshow(pred_array)
+        ax[0].set_title('Predicted')
+        ax[1].imshow(actual_array)
+        ax[1].set_title('Actual')
+        ax[0].axis('off')
+        ax[1].axis('off')
+        #plt.close()
+        return fig

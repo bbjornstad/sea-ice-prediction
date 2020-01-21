@@ -129,7 +129,7 @@ class IceModeler:
         filled[filled == 2510] = 1000
         return filled
 
-    def process_image_masks(self, im_array):
+    def process_image_masks(self, frames):
         """
         This method looks at the given array of frames and creates a mask
         identifying regions in which ice is specified to form and those regions
@@ -137,7 +137,7 @@ class IceModeler:
 
         Parameters:
         -----------
-            :np.ndarray im_array:       numpy array containing image data for
+            :np.ndarray frames:       numpy array containing image data for
                                         which masks should be generated
 
         Returns:
@@ -145,10 +145,17 @@ class IceModeler:
             :np.ndarray masks:          numpy array containing 0s where sea ice
                                         should not be found and 1s where sea ice
                                         should be found
+            :np.ndarray original_vals:  numpy array of the original values that
+                                        were contained in the now masked
+                                        regions
         """
+        im_array = self.fill_pole_hole(frames)
         masks = im_array <= 1000
+        original_val_masks = im_array > 1000
+        original_vals = im_array*original_val_masks.astype(int)
         masks = masks.astype(int)
-        return masks
+        masked_frames = im_array*masks
+        return masks, masked_frames, original_vals
 
     def scale_to_normal(self, frames, image_type):
         """
