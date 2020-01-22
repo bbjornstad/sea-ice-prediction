@@ -19,8 +19,10 @@ from keras.models import Sequential
 from keras.layers import Dense, Reshape, TimeDistributed, Flatten
 from keras.layers import AveragePooling2D
 from keras.layers.convolutional import Conv2D
+from keras import regularizers
 from tcn import TCN
 import keras.backend as kb
+import tensorflow as tf
 
 # -----------------
 # Class Definitions
@@ -157,7 +159,7 @@ class IceModeler:
         masked_frames = im_array*masks
         return masks, masked_frames, original_vals
 
-    def scale_to_normal(self, frames, image_type):
+    def scale_to_normal(self, frames, image_type, masked=False):
         """
         Scales the given array of raw band values to fit between the values of
         -1 and 1 by simply dividing by the maximum value dictated by the image
@@ -180,13 +182,16 @@ class IceModeler:
         """
         normed = np.copy(frames)
         if image_type == 'concentration':
-            normed = self.fill_pole_hole(normed)
-            normed[normed > 1000] = -self.conc_scale
-            return normed / self.conc_scale
+            if not masked:
+                normed = self.fill_pole_hole(normed)
+                normed[normed > 1000] = -self.conc_scale
+                return normed / self.conc_scale
+            else:
+                return normed / 1000
         elif image_type == 'extent':
             return normed / self.ext_scale
 
-    def scale_from_normal(self, frames, image_type):
+    def scale_from_normal(self, frames, image_type, masked=False):
         """
         Scales the given array of normalized band values back to the standard
         form for the image type by simply multiplying by the appropriate scaling
@@ -211,12 +216,16 @@ class IceModeler:
                                         filtered images frames of the same shape
                                         as frames
         """
+        scaled = np.copy(frames)
         if image_type == 'concentration':
-            scaled = np.round(frames * self.conc_scale)
-            scaled[scaled < -850] = 2540
-            zeros = np.logical_and(scaled > -200, scaled < 0)
-            scaled[zeros] = 0
-            return scaled
+            if not masked:
+                scaled = np.round(scaled * self.conc_scale)
+                scaled[scaled < -850] = 2540
+                zeros = np.logical_and(scaled > -200, scaled < 0)
+                scaled[zeros] = 0
+                return scaled
+            else:
+                return scaled*1000
         elif image_type == 'extent':
             return  np.round(frames * self.ext_scale)
 
@@ -228,7 +237,9 @@ class IceModeler:
             nb_stacks=1,
             padding='causal',
             return_sequences=True,
-            activation='tanh'):
+            activation='tanh',
+            kernel_initializer='he_normal',
+            dropout_rate=0):
         """
         This method adds n Temporal Convolutional Networks to the Sequential
         model with the specified hyperparameters (which will be the same if
@@ -256,6 +267,9 @@ class IceModeler:
             :str or valid activation:   activation function to use for each
                                         layer -- can be a custom function or
                                         activation layer or simply a Keras str
+            :str kernel_initializer:    string for a keras kernel-initializer to
+                                        use, for purposes of changing by
+                                        activation function
         """
 
         # this is the first TCN layer and we need to do some special input shape
@@ -270,7 +284,9 @@ class IceModeler:
                 padding=padding,
                 return_sequences=return_sequences,
                 activation=activation,
-                input_shape=input_shape))
+                input_shape=input_shape,
+                kernel_initializer=kernel_initializer,
+                dropout_rate=dropout_rate))
         else:
             num_same = n
 
@@ -281,7 +297,9 @@ class IceModeler:
                 nb_stacks = nb_stacks,
                 padding=padding,
                 return_sequences=return_sequences,
-                activation=activation)
+                activation=activation,
+                kernel_initializer=kernel_initializer,
+                dropout_rate=dropout_rate)
             self.seq_model.add(tcn_layer)
 
     def add_n_td_conv2d(
@@ -414,7 +432,9 @@ class IceModeler:
             self,
             n,
             units,
-            activation='tanh'):
+            activation='tanh',
+            kernel_initializer='glorot_uniform',
+            l2_amt=0):
         """
         Adds n TimeDistributed dense layers with the given hyperparameters
         to the Sequential model. If the Sequential model has no layers, then
@@ -437,13 +457,19 @@ class IceModeler:
             self.seq_model.add(TimeDistributed(Dense(
                 units=units,
                 activation=activation,
-                input_shape=input_shape)))
+                input_shape=input_shape,
+                kernel_initializer=kernel_initializer,
+                activity_regularizer=regularizers.l2(l2_amt))))
         else:
             num_same = n
 
         for i in range(num_same):
             dense_layer = TimeDistributed(
-                Dense(units=units, activation=activation))
+                Dense(
+                    units=units, 
+                    activation=activation,
+                    kernel_initializer=kernel_initializer,
+                    activity_regularizer=regularizers.l2(l2_amt)))
             self.seq_model.add(dense_layer)
 
 
@@ -494,6 +520,42 @@ class IceModeler:
             return tanh
         alpha_tanh = lambda x: scaled_tanh(x, alpha)
         return alpha_tanh
+
+    def make_soft_sigmoid(self, alpha):
+        """
+        Method that returns an activation function which is the sigmoid with 
+        inputs scaled so as to produce a softer contour. Used for creating 
+        custom activations with different sensitivities.
+
+        Parameters:
+        -----------
+            :float alpha:                   float which is the scaling factor
+                                            to use for inputs to the tanh
+                                            function
+
+        Returns:
+        --------
+            :func(x) alpha_sigmoid:            scaled hyperbolic tangent function
+                                            on tensor input x
+        """
+        def scaled_sigmoid(x, alpha):
+            sigm = kb.sigmoid(alpha*x)
+            return sigm
+        alpha_sigmoid = lambda x: scaled_sigmoid(x, alpha)
+        return alpha_sigmoid
+
+    def make_ssim_loss(
+        self, 
+        max_val=1):
+        def ssim_loss(
+            y_true, 
+            y_pred, 
+            max_val):
+            return tf.reduce_mean(tf.image.ssim(y_true, y_pred, max_val))
+
+        ssim = lambda y_true, y_pred: ssim_loss(y_true, y_pred, max_val)
+        return ssim
+
 
     def compile(self, loss, optimizer):
         """
